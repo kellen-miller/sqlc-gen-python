@@ -68,7 +68,10 @@ func TestPrinter(t *testing.T) {
 					},
 				},
 			},
-			Expected: `class Foo(str, enum.Enum):`,
+			Expected: `
+class Foo(str, enum.Enum):
+    pass
+`,
 		},
 		"dataclass": {
 			Node: &ast.Node{
@@ -125,6 +128,29 @@ func TestPrinter(t *testing.T) {
 class Foo:
     bar: int
     bat: Optional[int]
+`,
+		},
+		"empty-dataclass": {
+			Node: &ast.Node{
+				Node: &ast.Node_ClassDef{
+					ClassDef: &ast.ClassDef{
+						Name: "Foo",
+						DecoratorList: []*ast.Node{
+							{
+								Node: &ast.Node_Name{
+									Name: &ast.Name{
+										Id: "dataclass",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			Expected: `
+@dataclass
+class Foo:
+    pass
 `,
 		},
 		"call": {
