@@ -238,6 +238,11 @@ func (w *writer) printClassDef(cd *ast.ClassDef, indent int32) {
 		w.print(")")
 	}
 	w.print(":\n")
+	if len(cd.Body) == 0 {
+		w.printIndent(indent + 1)
+		w.print("pass\n")
+		return
+	}
 	for i, node := range cd.Body {
 		if i != 0 {
 			if _, ok := node.Node.(*ast.Node_FunctionDef); ok {

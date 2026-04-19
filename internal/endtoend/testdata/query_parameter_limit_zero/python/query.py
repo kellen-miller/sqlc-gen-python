@@ -3,11 +3,22 @@
 #   sqlc v1.30.0
 # source: query.sql
 import dataclasses
+from typing import Optional
 
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 
 from querytest import models
+
+
+COUNT_BARS = """-- name: count_bars \\:one
+SELECT count(*) FROM bar
+"""
+
+
+@dataclasses.dataclass()
+class CountBarsParams:
+    pass
 
 
 DELETE_BAR_BY_ID = """-- name: delete_bar_by_id \\:execrows
@@ -35,6 +46,12 @@ class Querier:
     def __init__(self, conn: sqlalchemy.engine.Connection):
         self._conn = conn
 
+    def count_bars(self, arg: CountBarsParams) -> Optional[int]:
+        row = self._conn.execute(sqlalchemy.text(COUNT_BARS)).first()
+        if row is None:
+            return None
+        return row[0]
+
     def delete_bar_by_id(self, arg: DeleteBarByIDParams) -> int:
         result = self._conn.execute(sqlalchemy.text(DELETE_BAR_BY_ID), {"p1": arg.id})
         return result.rowcount
@@ -47,6 +64,12 @@ class Querier:
 class AsyncQuerier:
     def __init__(self, conn: sqlalchemy.ext.asyncio.AsyncConnection):
         self._conn = conn
+
+    async def count_bars(self, arg: CountBarsParams) -> Optional[int]:
+        row = (await self._conn.execute(sqlalchemy.text(COUNT_BARS))).first()
+        if row is None:
+            return None
+        return row[0]
 
     async def delete_bar_by_id(self, arg: DeleteBarByIDParams) -> int:
         result = await self._conn.execute(sqlalchemy.text(DELETE_BAR_BY_ID), {"p1": arg.id})
