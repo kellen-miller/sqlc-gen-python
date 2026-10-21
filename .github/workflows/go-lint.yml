@@ -18,6 +18,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: kellen-miller/ci/.github/actions/go-lint@9478f2f23f217048a86cb1916fb78b312f20afa7
+      - uses: kellen-miller/ci/.github/actions/go-lint@6d83b6c0e8b6f407fa2f11e1c974449649cfa1f6
         with:
           go-version: '1.26.10'
