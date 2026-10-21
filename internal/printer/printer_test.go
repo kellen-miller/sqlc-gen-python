@@ -215,7 +215,6 @@ class Foo:
 			Expected: `from pkg import foo, bar`,
 		},
 	} {
-		tc := tc
 		t.Run(name, func(t *testing.T) {
 			result := Print(tc.Node, Options{})
 			if diff := cmp.Diff(strings.TrimSpace(tc.Expected), strings.TrimSpace(string(result.Python))); diff != "" {

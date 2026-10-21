@@ -22,14 +22,14 @@ func Singular(s SingularParams) string {
 	//
 	// https://github.com/kyleconroy/sqlc/issues/430
 	// https://github.com/jinzhu/inflection/issues/13
-	if strings.ToLower(s.Name) == "campus" {
+	if strings.EqualFold(s.Name, "campus") {
 		return s.Name
 	}
 	// Manual fix for incorrect handling of "meta"
 	//
 	// https://github.com/kyleconroy/sqlc/issues/1217
 	// https://github.com/jinzhu/inflection/issues/21
-	if strings.ToLower(s.Name) == "meta" {
+	if strings.EqualFold(s.Name, "meta") {
 		return s.Name
 	}
 	return upstream.Singular(s.Name)

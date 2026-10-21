@@ -27,17 +27,17 @@ func (i importSpec) String() string {
 
 type importer struct {
 	Models  []Struct
-	Queries []Query
+	Queries []*Query
 	Enums   []Enum
 	C       Config
 }
 
-func structUses(name string, s Struct) bool {
+func structUses(name string, s *Struct) bool {
 	for _, f := range s.Fields {
-		if name == "typing.List" && f.Type.IsArray {
+		if name == pythonTypingModule+".List" && f.Type.IsArray {
 			return true
 		}
-		if name == "typing.Optional" && f.Type.IsNull {
+		if name == pythonTypingModule+".Optional" && f.Type.IsNull {
 			return true
 		}
 		if f.Type.InnerType == name {
@@ -48,24 +48,19 @@ func structUses(name string, s Struct) bool {
 }
 
 func queryValueUses(name string, qv QueryValue) bool {
-	if !qv.isEmpty() {
-		if name == "typing.List" && qv.Typ.IsArray {
-			return true
-		}
-		if name == "typing.Optional" && qv.Typ.IsNull {
-			return true
-		}
-		if qv.IsStruct() && qv.EmitStruct() {
-			if structUses(name, *qv.Struct) {
-				return true
-			}
-		} else {
-			if qv.Typ.InnerType == name {
-				return true
-			}
-		}
+	if qv.isEmpty() {
+		return false
 	}
-	return false
+	if name == pythonTypingModule+".List" && qv.Typ.IsArray {
+		return true
+	}
+	if name == pythonTypingModule+".Optional" && qv.Typ.IsNull {
+		return true
+	}
+	if qv.IsStruct() && qv.EmitStruct() {
+		return structUses(name, qv.Struct)
+	}
+	return qv.Typ.InnerType == name
 }
 
 func (i *importer) Imports(fileName string) []string {
@@ -77,8 +72,8 @@ func (i *importer) Imports(fileName string) []string {
 
 func (i *importer) modelImportSpecs() (map[string]importSpec, map[string]importSpec) {
 	modelUses := func(name string) bool {
-		for _, model := range i.Models {
-			if structUses(name, model) {
+		for modelIndex := range i.Models {
+			if structUses(name, &i.Models[modelIndex]) {
 				return true
 			}
 		}
@@ -87,7 +82,7 @@ func (i *importer) modelImportSpecs() (map[string]importSpec, map[string]importS
 
 	std := stdImports(modelUses)
 	if i.C.EmitPydanticModels {
-		std["pydantic"] = importSpec{Module: "pydantic"}
+		std[pythonPydanticModule] = importSpec{Module: pythonPydanticModule}
 	} else {
 		std["dataclasses"] = importSpec{Module: "dataclasses"}
 	}
@@ -110,25 +105,38 @@ func (i *importer) modelImports() []string {
 	return importLines
 }
 
-func (i *importer) queryImportSpecs(fileName string) (map[string]importSpec, map[string]importSpec) {
-	queryUses := func(name string) bool {
-		for _, q := range i.Queries {
-			if q.SourceName != fileName {
-				continue
-			}
-			if queryValueUses(name, q.Ret) {
+func (i *importer) queryUses(name, fileName string) bool {
+	for _, query := range i.Queries {
+		if query.SourceName != fileName {
+			continue
+		}
+		if queryValueUses(name, query.Ret) {
+			return true
+		}
+		for _, arg := range query.Args {
+			if queryValueUses(name, arg) {
 				return true
 			}
-			for _, arg := range q.Args {
-				if queryValueUses(name, arg) {
-					return true
-				}
-			}
 		}
-		return false
 	}
+	return false
+}
 
-	std := stdImports(queryUses)
+func addQueryValueModelImports(std map[string]importSpec, qv QueryValue, conf Config) {
+	if !qv.IsStruct() || !qv.EmitStruct() {
+		return
+	}
+	if conf.EmitPydanticModels {
+		std[pythonPydanticModule] = importSpec{Module: pythonPydanticModule}
+		return
+	}
+	std["dataclasses"] = importSpec{Module: "dataclasses"}
+}
+
+func (i *importer) queryImportSpecs(fileName string) (map[string]importSpec, map[string]importSpec) {
+	std := stdImports(func(name string) bool {
+		return i.queryUses(name, fileName)
+	})
 
 	pkg := make(map[string]importSpec)
 	pkg["sqlalchemy"] = importSpec{Module: "sqlalchemy"}
@@ -136,34 +144,24 @@ func (i *importer) queryImportSpecs(fileName string) (map[string]importSpec, map
 		pkg["sqlalchemy.ext.asyncio"] = importSpec{Module: "sqlalchemy.ext.asyncio"}
 	}
 
-	queryValueModelImports := func(qv QueryValue) {
-		if qv.IsStruct() && qv.EmitStruct() {
-			if i.C.EmitPydanticModels {
-				std["pydantic"] = importSpec{Module: "pydantic"}
-			} else {
-				std["dataclasses"] = importSpec{Module: "dataclasses"}
-			}
-		}
-	}
-
-	for _, q := range i.Queries {
-		if q.SourceName != fileName {
+	for _, query := range i.Queries {
+		if query.SourceName != fileName {
 			continue
 		}
-		if q.Cmd == ":one" {
-			std["typing.Optional"] = importSpec{Module: "typing", Name: "Optional"}
+		if query.Cmd == queryCmdOne {
+			std[pythonTypingModule+".Optional"] = importSpec{Module: pythonTypingModule, Name: "Optional"}
 		}
-		if q.Cmd == ":many" {
+		if query.Cmd == queryCmdMany {
 			if i.C.EmitSyncQuerier {
-				std["typing.Iterator"] = importSpec{Module: "typing", Name: "Iterator"}
+				std[pythonTypingModule+".Iterator"] = importSpec{Module: pythonTypingModule, Name: "Iterator"}
 			}
 			if i.C.EmitAsyncQuerier {
-				std["typing.AsyncIterator"] = importSpec{Module: "typing", Name: "AsyncIterator"}
+				std[pythonTypingModule+".AsyncIterator"] = importSpec{Module: pythonTypingModule, Name: "AsyncIterator"}
 			}
 		}
-		queryValueModelImports(q.Ret)
-		for _, qv := range q.Args {
-			queryValueModelImports(qv)
+		addQueryValueModelImports(std, query.Ret, i.C)
+		for _, qv := range query.Args {
+			addQueryValueModelImports(std, qv, i.C)
 		}
 	}
 
@@ -187,8 +185,8 @@ func (i *importer) queryImports(fileName string) []string {
 
 type importFromSpec struct {
 	Module string
-	Names  []string
 	Alias  string
+	Names  []string
 }
 
 func buildImportBlock2(pkgs map[string]importSpec) []importFromSpec {
@@ -218,7 +216,10 @@ func buildImportBlock2(pkgs map[string]importSpec) []importFromSpec {
 		})
 	}
 	sort.Slice(pkgImports, func(i, j int) bool {
-		return pkgImports[i].Module < pkgImports[j].Module || pkgImports[i].Names[0] < pkgImports[j].Names[0]
+		if pkgImports[i].Module != pkgImports[j].Module {
+			return pkgImports[i].Module < pkgImports[j].Module
+		}
+		return pkgImports[i].Names[0] < pkgImports[j].Names[0]
 	})
 	return pkgImports
 }
@@ -263,14 +264,14 @@ func stdImports(uses func(name string) bool) map[string]importSpec {
 	if uses("uuid.UUID") {
 		std["uuid"] = importSpec{Module: "uuid"}
 	}
-	if uses("typing.List") {
-		std["typing.List"] = importSpec{Module: "typing", Name: "List"}
+	if uses(pythonTypingModule + ".List") {
+		std[pythonTypingModule+".List"] = importSpec{Module: pythonTypingModule, Name: "List"}
 	}
-	if uses("typing.Optional") {
-		std["typing.Optional"] = importSpec{Module: "typing", Name: "Optional"}
+	if uses(pythonTypingModule + ".Optional") {
+		std[pythonTypingModule+".Optional"] = importSpec{Module: pythonTypingModule, Name: "Optional"}
 	}
-	if uses("Any") {
-		std["typing.Any"] = importSpec{Module: "typing", Name: "Any"}
+	if uses(pythonAnyType) {
+		std[pythonTypingModule+".Any"] = importSpec{Module: pythonTypingModule, Name: pythonAnyType}
 	}
 	return std
 }

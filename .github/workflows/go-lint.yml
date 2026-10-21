@@ -20,4 +20,4 @@ jobs:
           persist-credentials: false
       - uses: kellen-miller/ci/.github/actions/go-lint@9478f2f23f217048a86cb1916fb78b312f20afa7
         with:
-          go-version: '1.23.5'
+          go-version: '1.26.10'
